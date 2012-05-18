@@ -85,6 +85,8 @@ void initializeEverything()
 	BEAT_LED_START_DD = BEAT_LED_DD = 1;
 	BEAT_LED_START = BEAT_LED = 0;
 	
+	listTest();
+	
 }
 
 void noteEvent(uint16_t noteNumber, uint8_t eventType)
@@ -184,8 +186,12 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 							/** Melody 1 and 2 follow the same logic */
 								
 								/** The note is currently NOT playing so trigger it as well*/
-								newOsc = playNote(noteNumber, pNote);
+							/*	
+							newOsc = playNote(noteNumber, pNote);
 								synthLayers[currentLayer].steps[currentBeat].noteOn = noteNumber;
+								*/
+							
+							
 								
 							break;
 						}
@@ -339,7 +345,7 @@ void retriggerNote(NoteKey * pNote)
  * and return the oscillator assigned to it
  */
 
-/**
+
 uint8_t playNote(uint8_t noteIndex, NoteKey * pNote)
 {
 	uint8_t newOsc = 0xFF;
@@ -365,15 +371,16 @@ uint8_t playNote(uint8_t noteIndex, NoteKey * pNote)
 	
 	return newOsc;
 }
-*/
 
+
+/*
 uint8_t playNote(uint16_t noteIndex);
 {
 	NoteKey * pNewNote;
 	pNewNote = reateNote(uint8_t oscNum, Oscillator * pOsc, uint32_t phaseIncrement, uint8_t noteState);
 	
 }
-
+*/
 uint8_t playSequencerNote(uint8_t noteIndex)
 {
 	uint8_t newOsc = 0xFF;
@@ -579,35 +586,65 @@ void pitchBend(uint16_t pitch)
 	}
 
 }
+void listTest()
+{
+	NoteKey * n1;
+	NoteKey * n2;
+	NoteKey * n3;
+	NoteKey * n4;
+	noteList = (noteListItem *)malloc(sizeof(noteListItem));
+	noteList->pNextItem = NULL;
+	noteList->pNote = NULL;
+	
+	n1 = createNote(7, 0xFF, NOTE_NONE);
+	n2 = createNote(6, 0x33, NOTE_NONE);
+	n3 = createNote(5, 0x84, NOTE_NONE);
+	n4 = createNote(4, 0xF1, NOTE_NONE);
+	
+	addNoteItem(n1);
+	addNoteItem(n3);
+	addNoteItem(n2);
+	removeNoteItem(n3);
+	addNoteItem(n4);
+	removeNoteItem(n1);
+	addNoteItem(n3);
+	
+}
 
-NoteKey * createNote(uint8_t oscNum, Oscillator * pOsc, uint32_t phaseIncrement, uint8_t noteState)
+/** Create a new notekey object given an oscillator, phase and state */
+NoteKey * createNote(uint8_t oscNum, uint32_t phaseIncrement, uint8_t noteState)
 {
 	NoteKey * pNewNote;
 	pNewNote = (NoteKey *)malloc(sizeof(NoteKey));
 	
 	pNewNote->oscNum = oscNum;
-	pNewNote->pOsc = pOsc;
+	pNewNote->pOsc = &Oscillators[oscNum];
 	pNewNote->phaseIncrement = phaseIncrement;
 	pNewNote->noteState = noteState;
-	
 	return pNewNote;
 }
 
+/** Adds a notekey object to the linked list of notes in use */
 void addNoteItem(NoteKey * pItem)
 {
 	noteListItem * pLastItem;
 	noteListItem * pNewItem;
 	pLastItem = noteList;
-	while(pLastItem)
+	while(pLastItem->pNextItem)
 	{
 		pLastItem = pLastItem->pNextItem;
 	}
 	
+	if((pLastItem == noteList) && !noteList->pNote)
+	{
+		noteList->pNote = pItem;
+		return;
+	}
 	/** lastItem now points to the laste item in the list */
 	pNewItem = (noteListItem*)malloc(sizeof(noteListItem));
 	pLastItem->pNextItem = pNewItem;
 	pNewItem->pNote = pItem;
-	pNewItem->pNextItem = 0;
+	pNewItem->pNextItem = NULL;
 }
 
 void removeNoteItem(NoteKey * pItem)
@@ -619,6 +656,16 @@ void removeNoteItem(NoteKey * pItem)
 	{
 		if(pCurrentItem->pNote == pItem)
 		{
+			if(pCurrentItem == noteList)
+			{
+				/** first item is removed */
+				free(pCurrentItem->pNote);
+				pCurrentItem->pNote = NULL;
+				pLastItem = pCurrentItem->pNextItem;
+				free(pCurrentItem);
+				noteList = pLastItem;
+				return;
+			}
 			/** delete this itm, destroy the notekey */
 			if(pLastItem)
 			{
@@ -627,11 +674,6 @@ void removeNoteItem(NoteKey * pItem)
 				free(pCurrentItem->pNote);
 				free(pCurrentItem);
 				
-			}
-			else
-			{
-				free(pCurrentItem->pNote);
-				pCurrentItem->pNote = NULL;
 			}
 			return;
 		}

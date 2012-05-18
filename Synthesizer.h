@@ -137,8 +137,9 @@ uint8_t endSequencerNote(uint8_t noteIndex);
 
 void removeNoteItem(NoteKey * pItem);
 void addNoteItem(NoteKey * pItem);
-NoteKey * createNote(uint8_t oscNum, Oscillator * pOsc, uint32_t phaseIncrement, uint8_t noteState);
+NoteKey * createNote(uint8_t oscNum, uint32_t phaseIncrement, uint8_t noteState);
 
+void listTest();
 void updateSynthesizer();
 void updateKeyboardNotes();
 void updateSequencerNotes();
