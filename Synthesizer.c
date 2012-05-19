@@ -119,13 +119,15 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 							if(pNote->noteState != NOTE_NONE)
 							{
 								/** The note is currently playing so retrigger it */
-								retriggerNote(pNote);
+								//retriggerNote(pNote);
 							}
 							else
 							{
 								/** The note is currently NOT playing so trigger it */
-								newOsc = playNote(noteNumber, pNote);
+								//newOsc = playNote(noteNumber, pNote);
 							}
+							
+							newPlayNote(noteNumber, 0xFF);
 							break;
 						} /** END CASE MELODY_1 MELODY_2 */
 						
@@ -371,8 +373,34 @@ uint8_t playNote(uint8_t noteIndex, NoteKey * pNote)
 	
 	return newOsc;
 }
-
-
+uint8_t newPlayNote(uint8_t noteIndex, uint8_t source)
+{
+	uint8_t newOsc = 0xFF;
+	NoteKey * pNewNote;
+	Oscillator * pNewOsc;
+	newOsc = popOsc();
+	if(newOsc != 0xFF)
+	{
+		pNewNote = createNote(newOsc, noteTable[noteIndex], NOTE_ATTACK);
+		
+		//pNewOsc = &Oscillators[newOsc];
+		pNewNote->pNewOsc->amplitude = 0;
+		pNewNote->pNewOsc->enabled = TRUE;
+		pNewNote->pNewOsc->phaseCounter = 0;
+		//pNewOsc->phaseIncrement = noteTable[noteIndex];
+		pNewNote->pNewOsc->frequency =  noteTable[noteIndex];
+		pNewNote->pNewOsc->noteNumber = noteIndex;
+		pNewNote->pNewOsc->waveForm = currentSelectedWaveForm;
+		pNewNote->pNewOsc->noteState = NOTE_ATTACK;
+		pNewNote->noteState = NOTE_ATTACK;
+		pNewNote->pNewOsc->parentId = 0xFFFF;
+		addNoteItem(pNewNote);
+		pitchBend(currentPitchBend);
+		return 1;
+	}
+	return 0;
+}
+ 
 /*
 uint8_t playNote(uint16_t noteIndex);
 {
@@ -635,11 +663,14 @@ void addNoteItem(NoteKey * pItem)
 		pLastItem = pLastItem->pNextItem;
 	}
 	
+	/** CASE 1: EMPTY LIST WITH NO FIRST ITEM */
 	if((pLastItem == noteList) && !noteList->pNote)
 	{
 		noteList->pNote = pItem;
 		return;
 	}
+	
+	/** CASE 2: NON EMPTY LIST */
 	/** lastItem now points to the laste item in the list */
 	pNewItem = (noteListItem*)malloc(sizeof(noteListItem));
 	pLastItem->pNextItem = pNewItem;
@@ -656,6 +687,7 @@ void removeNoteItem(NoteKey * pItem)
 	{
 		if(pCurrentItem->pNote == pItem)
 		{
+			/** CASE 1: FIRST ITEM IN LIST */
 			if(pCurrentItem == noteList)
 			{
 				/** first item is removed */
@@ -666,14 +698,15 @@ void removeNoteItem(NoteKey * pItem)
 				noteList = pLastItem;
 				return;
 			}
+			/** CASE 2: NOT FIRST ITEM */
 			/** delete this itm, destroy the notekey */
 			if(pLastItem)
 			{
+				/** previous->next = current->next */
+				/** delete current item */
 				pLastItem->pNextItem = pCurrentItem->pNextItem;
-				
 				free(pCurrentItem->pNote);
 				free(pCurrentItem);
-				
 			}
 			return;
 		}
