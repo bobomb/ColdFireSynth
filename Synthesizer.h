@@ -79,7 +79,7 @@ typedef struct
 	Oscillator * pOsc;
 	uint32_t phaseIncrement;
 	uint8_t noteState;
-	uint8_t parentId;
+	uint16_t noteId;
 } NoteKey;
 
 typedef struct
@@ -137,9 +137,11 @@ uint8_t newPlayNote(uint8_t noteIndex, uint8_t source);
 uint8_t playSequencerNote(uint8_t noteIndex);
 uint8_t endSequencerNote(uint8_t noteIndex);
 
+/** note list stuff */
 void removeNoteItem(NoteKey * pItem);
 void addNoteItem(NoteKey * pItem);
 NoteKey * createNote(uint8_t oscNum, uint32_t phaseIncrement, uint8_t noteState);
+NoteKey * findNote(uint16_t note);
 
 void listTest();
 void updateSynthesizer();
