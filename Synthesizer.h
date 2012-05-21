@@ -13,6 +13,8 @@
 #include "DAC.h"
 #include "LCD.h"
 
+/** MACROS */
+#define NOTE_ID(source, note) ((uint16_t)source << 8 )| note
 /* CONSTANTS */
 #define NOTES_PER_OCTAVE 0x0C
 /** Pitch bend wheel values */
@@ -33,6 +35,8 @@
 /** Note event types */
 #define NOTE_EVENT_ON  0x01
 #define NOTE_EVENT_OFF 0x02
+#define NOTE_SRC_KB		0xFA
+#define NOTE_SRC_LAYER		0xE0 
 /* States for a note*/
 #define NOTE_ATTACK    0x01
 #define NOTE_DECAY     0x02

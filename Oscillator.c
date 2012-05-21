@@ -29,7 +29,7 @@ void initializeOscillators()
 		Oscillators[i].phaseCounter = 0;
 		Oscillators[i].phaseIncrement = 0;
 		Oscillators[i].waveForm = WAVE_SINE;
-		Oscillators[i].parentId = 0xFFFF;
+		Oscillators[i].noteId = 0xFFFF;
 		Oscillators[i].attack = currentEnvelope.A;
 		Oscillators[i].decay = currentEnvelope.D;
 		Oscillators[i].sustain = currentEnvelope.S;
@@ -37,7 +37,6 @@ void initializeOscillators()
 		Oscillators[i].adsrCounter = 0;
 		Oscillators[i].velocity = 0xFF;
 		Oscillators[i].oscNum = i;
-		
 		pushOsc(i);
 	}
 	i=1;
@@ -94,7 +93,7 @@ void pushOsc(uint8_t oscNum)
 						/* Possibility 2: Stack is not full, so push the osc back onto the stack */
 			oscillatorStack[++topOfStack] = oscNum;
 			Oscillators[oscNum].flags &= 0;
-			Oscillators[oscNum].parentId = 0xFFFF;
+			Oscillators[oscNum].noteId = 0xFFFF;
 			numOscInUse--;
 		}
 	}
@@ -126,20 +125,6 @@ uint8_t popOsc()
 	}
 }
 
-uint8_t getOscByParent(uint8_t parentID)
-{
-	int i;
-	//if(numOscInUse > 0)
-	{
-		for(i = 0; i < MAX_OSCILLATORS; i++)
-		{
-			if(Oscillators[i].parentId == parentID)
-				return i;
-		}
-	}
-	
-	return 0xFF;
-}
 
 void freeOsc(uint8_t oscNumber)
 {

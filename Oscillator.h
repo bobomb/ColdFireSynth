@@ -22,6 +22,7 @@
 #define PARENT_MASK_CHANNEL 0x8800
 #define OSC_FLAGS_PITCHBEND  0x01
 
+//struct NoteKey;
 /* TYPES */
 typedef struct 
 {
@@ -32,7 +33,7 @@ typedef struct
 	uint32_t phaseIncrement;
 	uint32_t frequency;
 	uint16_t bendFrequency;
-	uint16_t parentId;
+	uint16_t noteId;
 	int16_t amplitude;
 	int16_t attack;
 	int16_t decay;
@@ -41,9 +42,7 @@ typedef struct
 	uint16_t adsrCounter;
 	uint8_t velocity;
 	uint16_t flags;
-	uint8_t noteState;
 	uint8_t oscNum;
-	void (*instrument)(void);
 } Oscillator;
 
 typedef struct 

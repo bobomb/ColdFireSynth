@@ -8,7 +8,6 @@
 
 uint8_t currentOctave = 4;
 uint16_t currentPitchBend = 0x2000;
-NoteKey keyStatus[25];
 
 uint8_t currentSelectedWaveForm = WAVE_SQUARE;
 uint16_t currentSelectedMode;
@@ -73,13 +72,6 @@ void initializeEverything()
 		
 
 	}
-	/** Initialize keystatus bits */
-	for(i = 0; i < 25; i++)
-	{
-		keyStatus[i].phaseIncrement = 0;
-		keyStatus[i].oscNum = 0xFF;
-		keyStatus[i].noteState = NOTE_NONE;
-	}
 	
 	noteListHead = (noteListItem *)malloc(sizeof(noteListItem));
 	noteListHead->pNextItem = NULL;
@@ -98,9 +90,8 @@ void initializeEverything()
 
 void noteEvent(uint16_t noteNumber, uint8_t eventType)
 {
-	uint8_t newOsc;
-	Oscillator * pOsc;
-	NoteKey * pNote;
+	Oscillator * pOsc = NULL;
+	NoteKey * pNote = NULL;
 
 	/** 1. Check current mode first
 	 * 
@@ -122,7 +113,7 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 						case LAYER_MELODY_2:
 						{
 							/** Melody 1 and 2 follow the same logic */
-							newPlayNote(noteNumber, 0xFF);
+							newPlayNote(noteNumber, NOTE_SRC_KB);
 							break;
 						} /** END CASE MELODY_1 MELODY_2 */
 						
@@ -158,7 +149,7 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 				case NOTE_EVENT_OFF:
 				{
 					/* Set note to release state of envelope*/
-					pNote = findNote((0xFF00 | noteNumber));
+					pNote = findNote(NOTE_ID(NOTE_SRC_KB, noteNumber));
 					
 					if(pNote)
 						pNote->noteState = NOTE_RELEASE;
@@ -283,31 +274,28 @@ void updateKeyboardNotes()
 	noteListItem * pKbNote;
 	noteListItem * pKbNoteNext;
 	NoteKey * pNote;
+	Oscillator * pOsc;
 	pKbNote = noteListHead->pNextItem;
 
-	
 	while(pKbNote)
 	{
 		pKbNoteNext = NULL;
-		if(pKbNote->pNote)
-		{
-			if(pKbNote->pNote->noteState != NOTE_NONE)
+		pNote = pKbNote->pNote;
+		pOsc = pNote->pOsc;
+			if(pNote->noteState != NOTE_NONE)
 			{
 				/** Update the ADSR properties here */
-				if(pKbNote->pNote->pOsc->flags & OSC_FLAGS_PITCHBEND)
+				if(pOsc->flags & OSC_FLAGS_PITCHBEND)
 				{
-
-					pKbNote->pNote->pOsc->phaseIncrement = pKbNote->pNote->pOsc->bendFrequency;
+					pOsc->phaseIncrement = pOsc->bendFrequency;
 				}
 				
-				switch(pKbNote->pNote->noteState)
+				switch(pNote->noteState)
 				{
 					case NOTE_ATTACK:
 					{
-						pKbNote->pNote->pOsc->amplitude = 0xFF;
-						pKbNote->pNote->noteState = NOTE_SUSTAIN;
-						pKbNote->pNote->pOsc->noteState  = NOTE_SUSTAIN;
-						//pKbNoteNext = pKbNote->pNextItem;
+						pOsc->amplitude = 0xFF;
+						pNote->noteState = NOTE_SUSTAIN;
 						break;
 					}
 					
@@ -323,19 +311,16 @@ void updateKeyboardNotes()
 					
 					case NOTE_RELEASE:
 					{
-						pKbNote->pNote->pOsc->enabled = FALSE;
-						pKbNote->pNote->noteState = NOTE_NONE;
-						pKbNote->pNote->pOsc->noteState  = NOTE_NONE;
+						pOsc->enabled = FALSE;
+						pNote->noteState = NOTE_NONE;
 						pKbNoteNext = pKbNote->pNextItem;
-						pushOsc(pKbNote->pNote->oscNum);
-						removeNoteItem(pKbNote->pNote);
+						removeNoteItem(pNote);
 						break;
 					}
 				};
 				
 			}
-			
-		}
+					
 		if(!pKbNoteNext)
 			pKbNote = pKbNote->pNextItem;
 		else
@@ -352,39 +337,7 @@ void retriggerNote(NoteKey * pNote)
 	pNote->pOsc->phaseCounter = 0;
 	pNote->pOsc->phaseIncrement = pNote->pOsc->frequency;
 	pNote->pOsc->amplitude = 0;
-	pNote->pOsc->noteState = NOTE_ATTACK;
-}
-
-/** Play note 
- * Give it an index into the table of notes, it will setup that note
- * and return the oscillator assigned to it
- */
-
-
-uint8_t playNote(uint8_t noteIndex, NoteKey * pNote)
-{
-	uint8_t newOsc = 0xFF;
-	Oscillator * pNewOsc;
-	newOsc = popOsc();
-	if(newOsc != 0xFF)
-	{
-		pNewOsc = &Oscillators[newOsc];
-		pNewOsc->amplitude = 0;
-		pNewOsc->enabled = TRUE;
-		pNewOsc->phaseCounter = 0;
-		pNewOsc->phaseIncrement = noteTable[noteIndex];
-		pNewOsc->frequency =  noteTable[noteIndex];
-		pNewOsc->noteNumber = noteIndex;
-		pNewOsc->waveForm = currentSelectedWaveForm;
-		pNewOsc->noteState = NOTE_ATTACK;
-		pNote->noteState = NOTE_ATTACK;
-		pNote->oscNum = newOsc;
-		pNote->pOsc = pNewOsc;
-		pNewOsc->parentId = 0xFFFF;
-		pitchBend(currentPitchBend);
-	}
-	
-	return newOsc;
+	//pNote->pOsc->noteState = NOTE_ATTACK;
 }
 
 /** Gets and Osc, sets up a new NoteKey structure, assigns stuff and adds to the note list */
@@ -397,41 +350,8 @@ uint8_t newPlayNote(uint8_t noteIndex, uint8_t source)
 	if(newOsc != 0xFF)
 	{
 		pNewNote = createNote(newOsc, noteTable[noteIndex], NOTE_ATTACK);
+		pNewOsc = pNewNote->pOsc;
 		pNewNote->pOsc = &Oscillators[newOsc];
-		pNewNote->pOsc->amplitude = 0;
-		pNewNote->pOsc->enabled = TRUE;
-		pNewNote->pOsc->phaseCounter = 0;
-		pNewNote->pOsc->phaseIncrement = noteTable[noteIndex];
-		pNewNote->pOsc->frequency =  noteTable[noteIndex];
-		pNewNote->pOsc->noteNumber = noteIndex;
-		pNewNote->pOsc->waveForm = currentSelectedWaveForm;
-		pNewNote->pOsc->noteState = NOTE_ATTACK;
-		pNewNote->noteState = NOTE_ATTACK;
-		pNewNote->pOsc->parentId = (uint16_t)((source<<8) | noteIndex);
-		pNewNote->noteId = (uint16_t)((source<<8) | noteIndex);
-		addNoteItem(pNewNote);
-		pitchBend(currentPitchBend);
-		return 1;
-	}
-	return 0;
-}
- 
-/*
-uint8_t playNote(uint16_t noteIndex);
-{
-	NoteKey * pNewNote;
-	pNewNote = reateNote(uint8_t oscNum, Oscillator * pOsc, uint32_t phaseIncrement, uint8_t noteState);
-	
-}
-*/
-uint8_t playSequencerNote(uint8_t noteIndex)
-{
-	uint8_t newOsc = 0xFF;
-	Oscillator * pNewOsc;
-	newOsc = popOsc();
-	if(newOsc != 0xFF)
-	{
-		pNewOsc = &Oscillators[newOsc];
 		pNewOsc->amplitude = 0;
 		pNewOsc->enabled = TRUE;
 		pNewOsc->phaseCounter = 0;
@@ -439,13 +359,13 @@ uint8_t playSequencerNote(uint8_t noteIndex)
 		pNewOsc->frequency =  noteTable[noteIndex];
 		pNewOsc->noteNumber = noteIndex;
 		pNewOsc->waveForm = currentSelectedWaveForm;
-		pNewOsc->noteState = NOTE_ATTACK;
-		pNewOsc->parentId = 0x6F00 | noteIndex;
+		pNewOsc->noteId = (uint16_t)((source<<8) | noteIndex);
+		pNewNote->noteId = (uint16_t)((source<<8) | noteIndex);
+		addNoteItem(pNewNote);
 		pitchBend(currentPitchBend);
-		
+		return 1;
 	}
-	
-	return newOsc;
+	return 0;
 }
 
 uint8_t endSequencerNote(uint8_t noteIndex);
@@ -480,83 +400,9 @@ void updateLED()
 	}
 }
 
-/** Sequencer logic goes here */
 void updateSequencerNotes()
 {
-	LayerState ls = synthLayers[currentLayer];
-	NoteKey * pNote;
-	Oscillator * pOsc;
-	int i, j;
-	int id;
-	                            
-	currentBeat++;
-	if(currentBeat == SEQUENCER_STEPS)
-	{
-		/** This is the tick that starts from the beginning */
-		currentBeat = 0;
-		
-	}
-	/** 1/16th a beat has elapsed */
-	
-	if(ls.steps[currentBeat].noteOn != 0xFF)
-	{
-		playSequencerNote(ls.steps[currentBeat].noteOn);
-	}
-	
-	for(i = 0; i < MAX_OSCILLATORS; i++)
-	{
-		pOsc = &Oscillators[i];
-		if((pOsc->parentId & 0xFF00) == 0x6F00)
-		{
-			/** Check to see if we can turn a note off, if soo then do it */
-			for(j = 0; j < ls.steps[currentBeat].noteOffIndex; j++)
-			if(ls.steps[currentBeat].noteOff[j] != 0xFF)
-			{
-				if((pOsc->parentId & 0x00FF) == ls.steps[currentBeat].noteOff[j])
-				{
-					pOsc->noteState = NOTE_RELEASE;
-				}
-			}
-			
-				if(pOsc->noteState != NOTE_NONE)
-				{
-					/** Update the ADSR properties here */
-					if(pOsc->flags & OSC_FLAGS_PITCHBEND)
-					{
-	
-						pOsc->phaseIncrement = pOsc->bendFrequency;
-					}
-					
-					switch(pOsc->noteState)
-					{
-						case NOTE_ATTACK:
-						{
-							pOsc->amplitude = 0xFF;
-							pOsc->noteState = NOTE_SUSTAIN;
-							break;
-						}
-						
-						case NOTE_DECAY:
-						{
-							break;
-						}
-						
-						case NOTE_SUSTAIN:
-						{
-							break;
-						}
-						
-						case NOTE_RELEASE:
-						{
-							pOsc->enabled = FALSE;
-							pOsc->noteState = NOTE_NONE;
-							pushOsc(pOsc->oscNum);
-							break;
-						}
-					};
-				} /** End switch on keystate */
-		}
-	} /** END for loop trough Oscillators[] */
+	return;
 }
 
 void notePress(uint16_t noteNumber, uint8_t noteVelocity)
@@ -724,6 +570,7 @@ void removeNoteItem(NoteKey * pItem)
 	{
 		if(pCurrentItem->pNote == pItem)
 		{
+			pushOsc(pCurrentItem->pNote->oscNum);
 			/** CASE 1: LAST ITEM IN LIST */
 			if(pCurrentItem == noteListTail)
 			{
