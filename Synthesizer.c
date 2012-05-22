@@ -12,12 +12,14 @@ uint16_t currentPitchBend = 0x2000;
 uint8_t currentSelectedWaveForm = WAVE_SQUARE;
 uint16_t currentSelectedMode;
 
-LayerState synthLayers[8] = {0xFF,};
+LayerState synthLayers[8] = {0x00,};
 uint8_t currentLayer = LAYER_MELODY_1;
 
 uint16_t beatsPerMinute;
 uint16_t delayPerBeat;
+uint16_t delayPerSubBeat;
 uint16_t beatTicksElapsed;
+uint16_t subBeatTicksElapsed;
 uint8_t currentBeat;
 noteListItem * noteListHead;
 noteListItem * noteListTail;
@@ -169,12 +171,11 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 						case LAYER_MELODY_2:
 						{
 							/** Melody 1 and 2 follow the same logic */
-								
-								/** The note is currently NOT playing so trigger it as well*/
-							/*	
-							newOsc = playNote(noteNumber, pNote);
-								synthLayers[currentLayer].steps[currentBeat].noteOn = noteNumber;
-								*/	
+							/** The note is currently NOT playing so trigger it for the keyboard */
+							newPlayNote(noteNumber, NOTE_SRC_KB);
+							/** Record the sequencer note press */
+							addSequencerNote(noteNumber);
+							addSequencerNote(noteNumber);
 							break;
 						}
 						
@@ -214,9 +215,11 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 						case LAYER_MELODY_2:
 						{
 							/** Melody 1 and 2 follow the same logic */
-								
-								/** The note is currently NOT playing so trigger it as well*/
-								
+							/* Set note to release state of envelope*/
+							pNote = findNote(NOTE_ID(NOTE_SRC_KB, noteNumber));
+							
+							if(pNote)
+								pNote->noteState = NOTE_RELEASE;
 							break;
 						}
 						
@@ -322,17 +325,23 @@ void updateKeyboardNotes()
 
 
 /** retriggers a note that is already being played */
-void retriggerNote(NoteKey * pNote)
+void retriggerNote(NoteKey * pNote, uint8_t noteIndex, uint8_t source)
 {
+	Oscillator * pNewOsc = pNote->pOsc;
 	pNote->noteState = NOTE_ATTACK;
-	pNote->pOsc->phaseCounter = 0;
-	pNote->pOsc->phaseIncrement = pNote->pOsc->frequency;
-	pNote->pOsc->amplitude = 0;
-	//pNote->pOsc->noteState = NOTE_ATTACK;
+	pNewOsc->amplitude = 0;
+	pNewOsc->enabled = TRUE;
+	pNewOsc->phaseCounter = 0;
+	pNewOsc->phaseIncrement = noteTable[noteIndex];
+	pNewOsc->frequency =  noteTable[noteIndex];
+	pNewOsc->noteNumber = noteIndex;
+	pNewOsc->waveForm = currentSelectedWaveForm;
+	pNewOsc->noteId = (uint16_t)((source<<8) | noteIndex);
+	pNote->noteId = (uint16_t)((source<<8) | noteIndex);
 }
 
 /** Gets and Osc, sets up a new NoteKey structure, assigns stuff and adds to the note list */
-uint8_t newPlayNote(uint8_t noteIndex, uint8_t source)
+NoteKey * newPlayNote(uint8_t noteIndex, uint8_t source)
 {
 	NoteKey * pNewNote;
 	Oscillator * pNewOsc;
@@ -351,24 +360,56 @@ uint8_t newPlayNote(uint8_t noteIndex, uint8_t source)
 		pNewNote->noteId = (uint16_t)((source<<8) | noteIndex);
 		addNoteItem(pNewNote);
 		pitchBend(currentPitchBend);
-		return 1;
+		return pNewNote;
 	}
-	return 0;
+	return NULL;
 }
 
 uint8_t endSequencerNote(uint8_t noteIndex);
+
 void updateSynthesizer()
 {
 	beatTicksElapsed++;
+	subBeatTicksElapsed++;
 	updateKeyboardNotes();
 	
 	if(beatTicksElapsed == delayPerBeat)
 	{
 		beatTicksElapsed = 0;
+		subBeatTicksElapsed = 0;
 		updateSequencerNotes();
 	}
 	
+	if(subBeatTicksElapsed == delayPerSubBeat)
+	{
+		subBeatTicksElapsed = 0;
+		updateSubSequence();
+	}
+	
 	updateLED();
+}
+
+void updateSubSequence()
+{
+	SequenceStep * pStep = &synthLayers[currentLayer].data[currentBeat];
+	NoteKey * pNote;
+	/** This is where we play a note and unplay a note */
+	/** If the current layer does not have a osc assigned to it, then go ahead and assign one */
+	if(!synthLayers[currentLayer].pNote)
+	{
+		pNote = newPlayNote(pStep->subData[pStep->stepCount], 0xE000 | ((uint16_t)(currentLayer << 8)));
+		synthLayers[currentLayer].pNote = pNote;
+		addNoteItem(pNote);
+	}
+	else
+	{
+		/** There is an oscillator currently assigned, reuse it */
+		pNote = synthLayers[currentLayer].pNote; 
+		retriggerNote(pNote, pStep->subData[pStep->stepCount], 0xE000 | ((uint16_t)currentLayer << 8));
+	}
+	
+	if(pStep->stepCount < 4)
+		pStep->stepCount++;
 }
 
 void updateLED()
@@ -388,8 +429,48 @@ void updateLED()
 	}
 }
 
+void addSequencerNote(uint8_t note)
+{
+	uint8_t i;
+	SequenceStep * pStep = &synthLayers[currentLayer].data[currentBeat];
+	if(pStep->bStarted == FALSE)
+	{
+		/** Erase all data except the first one and start recording freshly */
+		for(i = 1; i < 4; i++)
+		{
+			pStep->subData[i] = 0xFFFF;
+			pStep->stepCount = 1;
+			pStep->bStarted = TRUE;
+		}
+		/** Replace the first note */
+		pStep->subData[0] = note;
+	}
+	else
+	{
+		/** just log the note */
+		if(pStep->stepCount < 4)
+		{
+			pStep->subData[pStep->stepCount] = note;
+			pStep->stepCount++;
+		}
+	}
+	/** make sure we dont play any notes while recording the sequence */
+	if(synthLayers[currentLayer].pNote)
+	{
+		free(synthLayers[currentLayer].pNote);
+	}
+	
+	
+}
+
+/** Called each time we hit a beat*/
 void updateSequencerNotes()
 {
+	/** reset flag which indicates that the current beat just started playing */
+	synthLayers[currentLayer].data[currentBeat].bStarted = FALSE;
+	currentBeat++;
+	if(currentBeat == 4)
+		currentBeat = 0;
 	return;
 }
 
@@ -643,6 +724,8 @@ void setBPM(uint16_t bpm)
 	/* 60,000 ms in 1 min / beats per minute = (ms/min)* (min/beat) = milliseconds interval per beat */
 	/* Each beat is divided into 4 sub beats to give us 16 steps per 4 beat bar */
 	delayPerBeat = (60000/(beatsPerMinute))/4;
+	delayPerSubBeat = delayPerBeat / 4;
 	beatTicksElapsed = 0;
+	subBeatTicksElapsed = 0;
 	currentBeat = 0;
 }

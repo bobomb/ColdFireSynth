@@ -96,14 +96,16 @@ typedef struct
 
 typedef struct
 {
-	uint16_t noteTag;
-	uint8_t stepOn;
-	uint8_t stepOff;
+	uint8_t stepCount;
+	bool bStarted;
+	uint16_t subData[4];
 } SequenceStep;
 
 typedef struct
 {
 	uint16_t layerFlags;
+	SequenceStep data[4];
+	NoteKey * pNote;
 } LayerState;
 
 
@@ -140,9 +142,9 @@ void initializeEverything();
 void notePress(uint16_t noteNumber, uint8_t noteVelocity);
 void noteRelease(uint16_t noteNumber, uint8_t noteVelocity);
 void noteEvent(uint16_t noteNumber, uint8_t eventType);
-void retriggerNote(NoteKey * pNote);
+void retriggerNote(NoteKey * pNote, uint8_t noteIndex, uint8_t source);
 uint8_t playNote(uint8_t noteIndex, NoteKey *pNote);
-uint8_t newPlayNote(uint8_t noteIndex, uint8_t source);
+NoteKey * newPlayNote(uint8_t noteIndex, uint8_t source);
 uint8_t playSequencerNote(uint8_t noteIndex);
 uint8_t endSequencerNote(uint8_t noteIndex);
 
@@ -160,6 +162,8 @@ void updateSynthesizer();
 void updateKeyboardNotes();
 void updateSequencerNotes();
 void updateLED();
+void addSequencerNote(uint8_t note);
+void updateSubSequence();
 
 void controlChange(uint8_t controlNumber, uint8_t controlValue);
 void pitchBend(uint16_t pitch);
