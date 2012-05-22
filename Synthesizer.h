@@ -79,7 +79,6 @@
 
 typedef struct 
 {
-	uint8_t oscNum;
 	Oscillator * pOsc;
 	uint32_t phaseIncrement;
 	uint8_t noteState;
@@ -97,15 +96,14 @@ typedef struct
 
 typedef struct
 {
-	uint8_t noteOn;
-	uint8_t noteOff[4];
-	uint8_t noteOffIndex;
+	uint16_t noteTag;
+	uint8_t stepOn;
+	uint8_t stepOff;
 } SequenceStep;
 
 typedef struct
 {
 	uint16_t layerFlags;
-	SequenceStep steps[16];
 } LayerState;
 
 
@@ -115,7 +113,14 @@ struct noteListItem
 	struct noteListItem * pNextItem;
 };
 
+struct sequencerListItem 
+{
+	SequenceStep * pStep;
+	struct sequencerListItem * pNextItem;
+};
+
 typedef struct noteListItem noteListItem;
+typedef struct sequencerListItem sequencerListItem;
 
 
 /* VARIABLES */
@@ -144,8 +149,11 @@ uint8_t endSequencerNote(uint8_t noteIndex);
 /** note list stuff */
 void removeNoteItem(NoteKey * pItem);
 void addNoteItem(NoteKey * pItem);
-NoteKey * createNote(uint8_t oscNum, uint32_t phaseIncrement, uint8_t noteState);
+NoteKey * createNote(Oscillator * pOsc, uint32_t phaseIncrement, uint8_t noteState);
 NoteKey * findNote(uint16_t note);
+
+/** sequencer list stuff */
+void removeSequencerItem(SequenceStep * pStep);
 
 void listTest();
 void updateSynthesizer();

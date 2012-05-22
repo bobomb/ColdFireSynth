@@ -63,8 +63,8 @@ void initializeOscillators();
 uint8_t getFreeOsc();
 void freeOsc(uint8_t oscNumber);
 void setFrequency(uint8_t oscNumber, uint16_t frequency);
-void pushOsc(uint8_t oscNum);
-uint8_t popOsc();
+void pushOsc(Oscillator * pOsc);
+Oscillator * popOsc();
 uint8_t getOscByParent(uint8_t parentID);
 
 /* PANDAS */

@@ -21,6 +21,9 @@ uint16_t beatTicksElapsed;
 uint8_t currentBeat;
 noteListItem * noteListHead;
 noteListItem * noteListTail;
+sequencerListItem * sequencerListHead;
+sequencerListItem * sequencerListTail;
+
 
 void initializeEverything()
 {
@@ -58,25 +61,16 @@ void initializeEverything()
 		synthLayers[i].notes[3].noteState = NOTE_NONE;
 		synthLayers[i].notes[3].oscNum = 0xFF;
 		*/
-		
-		for(j = 0; j < SEQUENCER_STEPS; j++)
-		{
-			
-			synthLayers[i].steps[j].noteOn = 0xFF;
-			synthLayers[i].steps[j].noteOffIndex = 0;
-			for(k = 0; k < 4; k++)
-			{
-				synthLayers[i].steps[j].noteOff[k] = 0x00;
-			}
-		}
-		
-
 	}
 	
 	noteListHead = (noteListItem *)malloc(sizeof(noteListItem));
 	noteListHead->pNextItem = NULL;
 	noteListHead->pNote = NULL;
 	noteListTail = noteListHead;
+	
+	sequencerListHead = (sequencerListItem *)malloc(sizeof(sequencerListItem));
+	sequencerListHead->pNextItem = NULL;
+	sequencerListTail = sequencerListHead;
 	
 	currentSelectedMode = SYNTH_FREESTYLE;
 	setBPM(DEFAULT_BPM);
@@ -222,9 +216,6 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 							/** Melody 1 and 2 follow the same logic */
 								
 								/** The note is currently NOT playing so trigger it as well*/
-								synthLayers[currentLayer].steps[currentBeat].noteOff[synthLayers[currentLayer].steps[currentBeat].noteOffIndex] = noteNumber;
-								synthLayers[currentLayer].steps[currentBeat].noteOffIndex++;
-								pNote->noteState = NOTE_RELEASE;
 								
 							break;
 						}
@@ -343,15 +334,12 @@ void retriggerNote(NoteKey * pNote)
 /** Gets and Osc, sets up a new NoteKey structure, assigns stuff and adds to the note list */
 uint8_t newPlayNote(uint8_t noteIndex, uint8_t source)
 {
-	uint8_t newOsc = 0xFF;
 	NoteKey * pNewNote;
 	Oscillator * pNewOsc;
-	newOsc = popOsc();
-	if(newOsc != 0xFF)
+	pNewOsc = popOsc();
+	if(pNewOsc)
 	{
-		pNewNote = createNote(newOsc, noteTable[noteIndex], NOTE_ATTACK);
-		pNewOsc = pNewNote->pOsc;
-		pNewNote->pOsc = &Oscillators[newOsc];
+		pNewNote = createNote(pNewOsc, noteTable[noteIndex], NOTE_ATTACK);
 		pNewOsc->amplitude = 0;
 		pNewOsc->enabled = TRUE;
 		pNewOsc->phaseCounter = 0;
@@ -484,10 +472,10 @@ void listTest()
 	NoteKey * n4;
 
 	
-	n1 = createNote(1, 0xFF, NOTE_NONE);
-	n2 = createNote(2, 0x33, NOTE_NONE);
-	n3 = createNote(3, 0x84, NOTE_NONE);
-	n4 = createNote(4, 0xF1, NOTE_NONE);
+	n1 = createNote(&Oscillators[0], 0xFF, NOTE_NONE);
+	n2 = createNote(&Oscillators[0], 0x33, NOTE_NONE);
+	n3 = createNote(&Oscillators[0], 0x84, NOTE_NONE);
+	n4 = createNote(&Oscillators[0], 0xF1, NOTE_NONE);
 	
 	addNoteItem(n1);
 	addNoteItem(n3);
@@ -503,13 +491,11 @@ void listTest()
 }
 
 /** Create a new notekey object given an oscillator, phase and state */
-NoteKey * createNote(uint8_t oscNum, uint32_t phaseIncrement, uint8_t noteState)
+NoteKey * createNote(Oscillator * pOsc, uint32_t phaseIncrement, uint8_t noteState)
 {
 	NoteKey * pNewNote;
 	pNewNote = (NoteKey *)malloc(sizeof(NoteKey));
-	
-	pNewNote->oscNum = oscNum;
-	pNewNote->pOsc = &Oscillators[oscNum];
+	pNewNote->pOsc = pOsc;
 	pNewNote->phaseIncrement = phaseIncrement;
 	pNewNote->noteState = noteState;
 	return pNewNote;
@@ -541,6 +527,30 @@ void addNoteItem(NoteKey * pItem)
 	}
 }
 
+void addSequencerItem(SequenceStep * pItem)
+{
+	sequencerListItem * pNewItem;
+
+	/** CASE 1: EMPTY LIST WITH NO FIRST ITEM. HEAD == TAIL */
+	if(sequencerListHead == sequencerListTail)
+	{
+		pNewItem = (sequencerListItem*)malloc(sizeof(sequencerListItem));
+		pNewItem->pStep= pItem;
+		pNewItem->pNextItem = NULL;
+		sequencerListTail = pNewItem;
+		sequencerListHead->pNextItem = pNewItem;
+		return;
+	}
+	else
+	{
+		/** CASE 2: NON EMPTY LIST, HEAD != TAIL */
+		pNewItem = (sequencerListItem*)malloc(sizeof(sequencerListItem));
+		pNewItem->pStep = pItem;
+		pNewItem->pNextItem = NULL;
+		sequencerListTail->pNextItem = pNewItem;
+		sequencerListTail = pNewItem;
+	}
+}
 /** Searches for a note in the list and returns it if found, otherwise returns null */
 NoteKey * findNote(uint16_t note)
 {
@@ -570,7 +580,7 @@ void removeNoteItem(NoteKey * pItem)
 	{
 		if(pCurrentItem->pNote == pItem)
 		{
-			pushOsc(pCurrentItem->pNote->oscNum);
+			pushOsc(pCurrentItem->pNote->pOsc);
 			/** CASE 1: LAST ITEM IN LIST */
 			if(pCurrentItem == noteListTail)
 			{
@@ -594,6 +604,39 @@ void removeNoteItem(NoteKey * pItem)
 	}
 }
 
+void removeSequencerItem(SequenceStep * pStep )
+{
+	sequencerListItem * pCurrentItem = sequencerListHead->pNextItem;
+	sequencerListItem * pLastItem = sequencerListHead;
+	
+	/** SANITY CHECK - HEAD == TAIL is EMPTY LIST */
+	if(noteListHead == noteListTail)
+		return;
+	
+	while(pCurrentItem)
+	{
+		if(pCurrentItem->pStep == pStep)
+		{
+			/** CASE 1: LAST ITEM IN LIST */
+			if(pCurrentItem == sequencerListTail)
+			{
+				free(pCurrentItem);
+				sequencerListTail = pLastItem;
+				sequencerListTail->pNextItem = NULL;
+				return;
+			}
+			else
+			{
+				/** CASE 2: NOT LAST ITEM */
+				pLastItem->pNextItem = pCurrentItem->pNextItem;
+				free(pCurrentItem);
+				return;
+			}
+		}
+		pLastItem = pCurrentItem;
+		pCurrentItem = pCurrentItem->pNextItem;
+	}
+}
 void setBPM(uint16_t bpm)
 {
 	beatsPerMinute = bpm;

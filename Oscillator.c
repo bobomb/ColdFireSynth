@@ -13,7 +13,7 @@ Oscillator Oscillators[MAX_OSCILLATORS];
 uint32_t oscUsageField = 0x0; 
 //keeps track of number of used oscs
 uint8_t numOscInUse = MAX_OSCILLATORS;
-uint8_t oscillatorStack[MAX_OSCILLATORS];
+Oscillator * oscillatorStack[MAX_OSCILLATORS];
 uint8_t topOfStack=0xFF; //0xFF = uninitialized
 Envelope currentEnvelope = {1, 20, 10, 1}; 
 
@@ -37,47 +37,16 @@ void initializeOscillators()
 		Oscillators[i].adsrCounter = 0;
 		Oscillators[i].velocity = 0xFF;
 		Oscillators[i].oscNum = i;
-		pushOsc(i);
+		pushOsc(&Oscillators[i]);
 	}
 	i=1;
 }
 
-uint8_t getFreeOsc()
-{
-	uint8_t shiftCounter = 0;
-	uint32_t oscFree;
-	
-	if(numOscInUse == MAX_OSCILLATORS)
-		return 0xFF;
-	
-	oscFree = ~oscUsageField;
-	//if a bit is 1 then the osc is in use, and if the bit is 0 then an osc is not in use
-	//if we take the complement of this, we get a nonzero number if there are free oscs (as free oscs will  be 1, and non free 0)
-	//so if all oscs are not free, everhythings is 0
-	//now we have to find the first free osc by bitshifting
-	for(shiftCounter = 0; shiftCounter < MAX_OSCILLATORS; shiftCounter++)
-	{
-		if(oscFree & 0x1)
-		{
-			numOscInUse++;
-			oscUsageField |= (1<<shiftCounter);
-			return shiftCounter;
-		}
-		else
-		{
-			oscFree >>=1; //shift 1 bit to right
-		}
-	}
-	//if we got here then we got nothing
-	return 0xFF; //no more oscs free
-}
-
- 
-void pushOsc(uint8_t oscNum)
+void pushOsc(Oscillator * pOsc)
 {
 	if(topOfStack == 0xFF) /* uninitialized case */
 	{
-		oscillatorStack[0] = oscNum;
+		oscillatorStack[0] = pOsc;
 		topOfStack = 0;
 		numOscInUse--;
 	}
@@ -91,15 +60,15 @@ void pushOsc(uint8_t oscNum)
 		else
 		{
 						/* Possibility 2: Stack is not full, so push the osc back onto the stack */
-			oscillatorStack[++topOfStack] = oscNum;
-			Oscillators[oscNum].flags &= 0;
-			Oscillators[oscNum].noteId = 0xFFFF;
+			oscillatorStack[++topOfStack] = pOsc;
+			pOsc->flags &= 0;
+			pOsc->noteId = 0xFFFF;
 			numOscInUse--;
 		}
 	}
 }
  
-uint8_t popOsc()
+Oscillator * popOsc()
 {	   
 	/* Possibility 1: Stack only has 1 element on it */
 	if(topOfStack == 0)
@@ -120,16 +89,9 @@ uint8_t popOsc()
 		{
 			/* Possibility 3: Stack is uninitialized/empty */
 			/* Return 0xFF to signify you got nothing */
-			return 0xFF;
+			return 0;
 		}
 	}
-}
-
-
-void freeOsc(uint8_t oscNumber)
-{
-	oscUsageField &= (1<<oscNumber);
-	numOscInUse--;
 }
 
 void setFrequency(uint8_t oscNumber, uint16_t frequency)
