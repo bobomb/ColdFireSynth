@@ -25,7 +25,7 @@ noteListItem * noteListHead;
 noteListItem * noteListTail;
 sequencerListItem * sequencerListHead;
 sequencerListItem * sequencerListTail;
-
+bool keyStatus[25] = {0,};
 
 void initializeEverything()
 {
@@ -51,30 +51,21 @@ void initializeEverything()
 	
 	for(i = 0; i < 8; i++)
 	{
-		/*
-		synthLayers[i].notes[0].noteState = NOTE_NONE;
-		synthLayers[i].notes[0].oscNum = 0xFF;
-		synthLayers[i].notes[1].noteState = NOTE_NONE;
-		synthLayers[i].notes[1].oscNum = 0xFF;
-		
-		synthLayers[i].notes[2].noteState = NOTE_NONE;
-		synthLayers[i].notes[2].oscNum = 0xFF;
-		
-		synthLayers[i].notes[3].noteState = NOTE_NONE;
-		synthLayers[i].notes[3].oscNum = 0xFF;
-		*/
+		for(j = 0; j < SEQUENCER_STEPS; j++)
+		{
+			for(k = 0; k < SEQUENCER_SUBSTEPS; k++)
+			{
+				synthLayers[i].data[j].subData[k] = 0xFFFF;
+			}
+		}
 	}
 	
 	noteListHead = (noteListItem *)malloc(sizeof(noteListItem));
 	noteListHead->pNextItem = NULL;
 	noteListHead->pNote = NULL;
 	noteListTail = noteListHead;
-	
-	sequencerListHead = (sequencerListItem *)malloc(sizeof(sequencerListItem));
-	sequencerListHead->pNextItem = NULL;
-	sequencerListTail = sequencerListHead;
-	
-	currentSelectedMode = SYNTH_FREESTYLE;
+		
+	currentSelectedMode = SYNTH_RECORDING;
 	setBPM(DEFAULT_BPM);
 	
 	BEAT_LED_START_DD = BEAT_LED_DD = 1;
@@ -174,8 +165,8 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 							/** The note is currently NOT playing so trigger it for the keyboard */
 							newPlayNote(noteNumber, NOTE_SRC_KB);
 							/** Record the sequencer note press */
-							addSequencerNote(noteNumber);
-							addSequencerNote(noteNumber);
+							keyStatus[noteNumber - currentOctave*NOTES_PER_OCTAVE] = TRUE;
+							//addSequencerNote(noteNumber);
 							break;
 						}
 						
@@ -220,6 +211,8 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 							
 							if(pNote)
 								pNote->noteState = NOTE_RELEASE;
+							
+							keyStatus[noteNumber - currentOctave*NOTES_PER_OCTAVE] = FALSE;
 							break;
 						}
 						
@@ -328,10 +321,10 @@ void updateKeyboardNotes()
 void retriggerNote(NoteKey * pNote, uint8_t noteIndex, uint8_t source)
 {
 	Oscillator * pNewOsc = pNote->pOsc;
-	pNote->noteState = NOTE_ATTACK;
-	pNewOsc->amplitude = 0;
+	//pNote->noteState = NOTE_ATTACK;
+	//pNewOsc->amplitude = 0;
 	pNewOsc->enabled = TRUE;
-	pNewOsc->phaseCounter = 0;
+	//pNewOsc->phaseCounter = 0;
 	pNewOsc->phaseIncrement = noteTable[noteIndex];
 	pNewOsc->frequency =  noteTable[noteIndex];
 	pNewOsc->noteNumber = noteIndex;
@@ -376,40 +369,69 @@ void updateSynthesizer()
 	if(beatTicksElapsed == delayPerBeat)
 	{
 		beatTicksElapsed = 0;
-		subBeatTicksElapsed = 0;
+		//subBeatTicksElapsed = 0;
 		updateSequencerNotes();
 	}
 	
 	if(subBeatTicksElapsed == delayPerSubBeat)
 	{
 		subBeatTicksElapsed = 0;
-		updateSubSequence();
+		updateSubSequence(true);
 	}
 	
 	updateLED();
 }
 
-void updateSubSequence()
+void updateSubSequence(bool internal)
 {
 	SequenceStep * pStep = &synthLayers[currentLayer].data[currentBeat];
 	NoteKey * pNote;
+	int i;
+	
+	/** Experimental code */
+	for(i = 0; i < 25; i++)
+	{
+		if(keyStatus[i] == TRUE)
+		{
+			addSequencerNote(i + currentOctave*NOTES_PER_OCTAVE);
+		}
+	}
+	
 	/** This is where we play a note and unplay a note */
 	/** If the current layer does not have a osc assigned to it, then go ahead and assign one */
-	if(!synthLayers[currentLayer].pNote)
+	if(pStep->subData[pStep->stepIndex] != 0xFFFF)
 	{
-		pNote = newPlayNote(pStep->subData[pStep->stepCount], 0xE000 | ((uint16_t)(currentLayer << 8)));
-		synthLayers[currentLayer].pNote = pNote;
-		addNoteItem(pNote);
+		if(!synthLayers[currentLayer].pNote)
+		{
+			pNote = newPlayNote(pStep->subData[pStep->stepIndex], 0xE000 | ((uint16_t)(currentLayer << 8)));
+			synthLayers[currentLayer].pNote = pNote;
+			addNoteItem(pNote);
+		}
+		else
+		{
+			/** There is an oscillator currently assigned, reuse it */
+			pNote = synthLayers[currentLayer].pNote; 
+			retriggerNote(pNote, pStep->subData[pStep->stepIndex], 0xE000 | ((uint16_t)currentLayer << 8));
+		}
 	}
 	else
 	{
-		/** There is an oscillator currently assigned, reuse it */
-		pNote = synthLayers[currentLayer].pNote; 
-		retriggerNote(pNote, pStep->subData[pStep->stepCount], 0xE000 | ((uint16_t)currentLayer << 8));
+		/** In this case there is no note to play, in which case we should unplay the last note if it was playing */
+		if(synthLayers[currentLayer].pNote)
+			synthLayers[currentLayer].pNote->pOsc->enabled = FALSE;
+
 	}
 	
-	if(pStep->stepCount < 4)
-		pStep->stepCount++;
+	if(internal)
+	{
+		pStep->stepIndex++;
+		if(pStep->stepIndex == SEQUENCER_SUBSTEPS)
+		{
+			//if(synthLayers[currentLayer].pNote)
+			//			synthLayers[currentLayer].pNote->pOsc->enabled = FALSE;
+			pStep->stepIndex = 0;
+		}
+	}
 }
 
 void updateLED()
@@ -436,28 +458,32 @@ void addSequencerNote(uint8_t note)
 	if(pStep->bStarted == FALSE)
 	{
 		/** Erase all data except the first one and start recording freshly */
-		for(i = 1; i < 4; i++)
+		for(i = 1; i < SEQUENCER_SUBSTEPS; i++)
 		{
 			pStep->subData[i] = 0xFFFF;
 			pStep->stepCount = 1;
 			pStep->bStarted = TRUE;
 		}
 		/** Replace the first note */
-		pStep->subData[0] = note;
+		pStep->subData[pStep->stepIndex] = note;
 	}
 	else
 	{
 		/** just log the note */
+		/*
 		if(pStep->stepCount < 4)
 		{
 			pStep->subData[pStep->stepCount] = note;
 			pStep->stepCount++;
 		}
+		*/
+		pStep->subData[pStep->stepIndex] = note;
 	}
 	/** make sure we dont play any notes while recording the sequence */
 	if(synthLayers[currentLayer].pNote)
 	{
-		free(synthLayers[currentLayer].pNote);
+		//free(synthLayers[currentLayer].pNote);
+		synthLayers[currentLayer].pNote->pOsc->enabled = FALSE;
 	}
 	
 	
@@ -469,7 +495,7 @@ void updateSequencerNotes()
 	/** reset flag which indicates that the current beat just started playing */
 	synthLayers[currentLayer].data[currentBeat].bStarted = FALSE;
 	currentBeat++;
-	if(currentBeat == 4)
+	if(currentBeat == SEQUENCER_STEPS)
 		currentBeat = 0;
 	return;
 }
@@ -504,6 +530,17 @@ void controlChange(uint8_t controlNumber, uint8_t controlValue)
 					currentOctave--;
 			}
 			break;
+		}
+		
+		case DRUMS_BUTTON:
+		{
+			if(controlValue == CONTROL_ON)
+			{
+				if(currentSelectedMode == SYNTH_RECORDING)
+					currentSelectedMode = SYNTH_FREESTYLE;
+				else
+					currentSelectedMode = SYNTH_RECORDING;
+			}
 		}
 	}
 }
@@ -566,7 +603,6 @@ void listTest()
 	removeNoteItem(n1);
 	removeNoteItem(n3);
 	removeNoteItem(n4);
-	
 	return;
 	
 }
@@ -607,31 +643,31 @@ void addNoteItem(NoteKey * pItem)
 		noteListTail = pNewItem;
 	}
 }
-
-void addSequencerItem(SequenceStep * pItem)
-{
-	sequencerListItem * pNewItem;
-
-	/** CASE 1: EMPTY LIST WITH NO FIRST ITEM. HEAD == TAIL */
-	if(sequencerListHead == sequencerListTail)
-	{
-		pNewItem = (sequencerListItem*)malloc(sizeof(sequencerListItem));
-		pNewItem->pStep= pItem;
-		pNewItem->pNextItem = NULL;
-		sequencerListTail = pNewItem;
-		sequencerListHead->pNextItem = pNewItem;
-		return;
-	}
-	else
-	{
-		/** CASE 2: NON EMPTY LIST, HEAD != TAIL */
-		pNewItem = (sequencerListItem*)malloc(sizeof(sequencerListItem));
-		pNewItem->pStep = pItem;
-		pNewItem->pNextItem = NULL;
-		sequencerListTail->pNextItem = pNewItem;
-		sequencerListTail = pNewItem;
-	}
-}
+//
+//void addSequencerItem(SequenceStep * pItem)
+//{
+//	sequencerListItem * pNewItem;
+//
+//	/** CASE 1: EMPTY LIST WITH NO FIRST ITEM. HEAD == TAIL */
+//	if(sequencerListHead == sequencerListTail)
+//	{
+//		pNewItem = (sequencerListItem*)malloc(sizeof(sequencerListItem));
+//		pNewItem->pStep= pItem;
+//		pNewItem->pNextItem = NULL;
+//		sequencerListTail = pNewItem;
+//		sequencerListHead->pNextItem = pNewItem;
+//		return;
+//	}
+//	else
+//	{
+//		/** CASE 2: NON EMPTY LIST, HEAD != TAIL */
+//		pNewItem = (sequencerListItem*)malloc(sizeof(sequencerListItem));
+//		pNewItem->pStep = pItem;
+//		pNewItem->pNextItem = NULL;
+//		sequencerListTail->pNextItem = pNewItem;
+//		sequencerListTail = pNewItem;
+//	}
+//}
 /** Searches for a note in the list and returns it if found, otherwise returns null */
 NoteKey * findNote(uint16_t note)
 {
@@ -684,47 +720,47 @@ void removeNoteItem(NoteKey * pItem)
 		pCurrentItem = pCurrentItem->pNextItem;
 	}
 }
-
-void removeSequencerItem(SequenceStep * pStep )
-{
-	sequencerListItem * pCurrentItem = sequencerListHead->pNextItem;
-	sequencerListItem * pLastItem = sequencerListHead;
-	
-	/** SANITY CHECK - HEAD == TAIL is EMPTY LIST */
-	if(noteListHead == noteListTail)
-		return;
-	
-	while(pCurrentItem)
-	{
-		if(pCurrentItem->pStep == pStep)
-		{
-			/** CASE 1: LAST ITEM IN LIST */
-			if(pCurrentItem == sequencerListTail)
-			{
-				free(pCurrentItem);
-				sequencerListTail = pLastItem;
-				sequencerListTail->pNextItem = NULL;
-				return;
-			}
-			else
-			{
-				/** CASE 2: NOT LAST ITEM */
-				pLastItem->pNextItem = pCurrentItem->pNextItem;
-				free(pCurrentItem);
-				return;
-			}
-		}
-		pLastItem = pCurrentItem;
-		pCurrentItem = pCurrentItem->pNextItem;
-	}
-}
+//
+//void removeSequencerItem(SequenceStep * pStep )
+//{
+//	sequencerListItem * pCurrentItem = sequencerListHead->pNextItem;
+//	sequencerListItem * pLastItem = sequencerListHead;
+//	
+//	/** SANITY CHECK - HEAD == TAIL is EMPTY LIST */
+//	if(noteListHead == noteListTail)
+//		return;
+//	
+//	while(pCurrentItem)
+//	{
+//		if(pCurrentItem->pStep == pStep)
+//		{
+//			/** CASE 1: LAST ITEM IN LIST */
+//			if(pCurrentItem == sequencerListTail)
+//			{
+//				free(pCurrentItem);
+//				sequencerListTail = pLastItem;
+//				sequencerListTail->pNextItem = NULL;
+//				return;
+//			}
+//			else
+//			{
+//				/** CASE 2: NOT LAST ITEM */
+//				pLastItem->pNextItem = pCurrentItem->pNextItem;
+//				free(pCurrentItem);
+//				return;
+//			}
+//		}
+//		pLastItem = pCurrentItem;
+//		pCurrentItem = pCurrentItem->pNextItem;
+//	}
+//}
 void setBPM(uint16_t bpm)
 {
 	beatsPerMinute = bpm;
 	/* 60,000 ms in 1 min / beats per minute = (ms/min)* (min/beat) = milliseconds interval per beat */
 	/* Each beat is divided into 4 sub beats to give us 16 steps per 4 beat bar */
-	delayPerBeat = (60000/(beatsPerMinute))/4;
-	delayPerSubBeat = delayPerBeat / 4;
+	delayPerBeat = (60000/(beatsPerMinute))/SEQUENCER_STEPS;
+	delayPerSubBeat = delayPerBeat / SEQUENCER_SUBSTEPS;
 	beatTicksElapsed = 0;
 	subBeatTicksElapsed = 0;
 	currentBeat = 0;

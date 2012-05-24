@@ -70,11 +70,12 @@
 #define BEAT_LED_DELAY_MS	20
 
 /* Sequencer stuff */
-#define DEFAULT_BPM 60
+#define DEFAULT_BPM 15
 #define SEQUENCER_NOTE_RECORDING	0x1
 #define SEQUENCER_NOTE_OFF			0x2
 #define SEQUENCER_NOTE_PLAYING		0x4
-#define SEQUENCER_STEPS				16
+#define SEQUENCER_SUBSTEPS			4
+#define SEQUENCER_STEPS				8
 /* TYPES */
 
 typedef struct 
@@ -97,14 +98,15 @@ typedef struct
 typedef struct
 {
 	uint8_t stepCount;
+	uint8_t stepIndex;
 	bool bStarted;
-	uint16_t subData[4];
+	uint16_t subData[SEQUENCER_SUBSTEPS];
 } SequenceStep;
 
 typedef struct
 {
 	uint16_t layerFlags;
-	SequenceStep data[4];
+	SequenceStep data[SEQUENCER_STEPS];
 	NoteKey * pNote;
 } LayerState;
 
