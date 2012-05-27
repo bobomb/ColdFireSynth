@@ -12,7 +12,7 @@ uint16_t currentPitchBend = 0x2000;
 uint8_t currentSelectedWaveForm = WAVE_SQUARE;
 uint16_t currentSelectedMode;
 
-LayerState synthLayers[8] = {0x00,};
+LayerState synthLayers[LAYER_COUNT] = {0x00,};
 uint8_t currentLayer = LAYER_MELODY_1;
 
 uint16_t beatsPerMinute;
@@ -53,13 +53,13 @@ void initializeEverything()
 	{
 		for(j = 0; j < SEQUENCER_STEPS; j++)
 		{
-			//for(k = 0; k < SEQUENCER_SUBSTEPS; k++)
-			{
 				synthLayers[i].sequenceNotes[j] = 0xFFFF;
-				synthLayers[i].sequenceTimes[j] = 0x0;
-			}
 		}
+		synthLayers[i].waveType = currentSelectedWaveForm;
 	}
+	
+	synthLayers[0].layerFlags |= LAYER_FLAGS_ENABLED;
+	synthLayers[1].layerFlags |= LAYER_FLAGS_ENABLED;
 	
 	noteListHead = (noteListItem *)malloc(sizeof(noteListItem));
 	noteListHead->pNextItem = NULL;
@@ -165,13 +165,8 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 							/** Melody 1 and 2 follow the same logic */
 							/** The note is currently NOT playing so trigger it for the keyboard */
 							pNote = newPlayNote(noteNumber, NOTE_SRC_KB);
-							pNote->noteDuration = currentBeat+1;
-							//keyStatus[noteNumber - currentOctave*NOTES_PER_OCTAVE] = 1;
-							/** Record the sequencer note press */
-							//keyStatus[noteNumber - currentOctave*NOTES_PER_OCTAVE] = TRUE;
 							addSequencerNote(noteNumber);
-							//currentNote = noteNumber;
-							//addSequencerNote(noteNumber);
+							currentNoteDown = noteNumber;
 							break;
 						}
 						
@@ -217,18 +212,6 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 							if(pNote)
 								pNote->noteState = NOTE_RELEASE;
 							
-							/** Find the note in the loop structure, set it's duration 
-							for(g_i = 0; g_i < 16; g_i++)
-							{
-								if(synthLayers[currentLayer].sequenceNotes[g_i] == noteNumber)
-								{
-									synthLayers[currentLayer].sequenceTimes[g_i] = keyStatus[noteNumber - currentOctave*NOTES_PER_OCTAVE];
-									keyStatus[noteNumber - currentOctave*NOTES_PER_OCTAVE] = 0;
-								}
-							}
-							*/
-							
-							//keyStatus[noteNumber - currentOctave*NOTES_PER_OCTAVE] = FALSE;
 							currentNoteDown = 0xFF;
 							break;
 						}
@@ -266,11 +249,65 @@ void noteEvent(uint16_t noteNumber, uint8_t eventType)
 	
 }
 
+/** event for control change such as the different buttons on the synthstation25 */
+void controlChange(uint8_t controlNumber, uint8_t controlValue)
+{
+	/** Test for control on only since 2 control change events are recieved, one for button down and another
+	 * for button up
+	 */
+	if(controlValue == CONTROL_ON)
+	{
+		switch (controlNumber) 
+		{
+			case PITCH_UP_BUTTON: 
+			{
+				if(currentOctave < 7)
+					currentOctave++;
+				break;
+			}
+			
+			case PITCH_DOWN_BUTTON: 
+			{
+				if(currentOctave > 0)
+					currentOctave--;
+				break;
+			}
+			
+			case DRUMS_BUTTON: 
+			{
+				if(currentSelectedMode == SYNTH_RECORDING)
+					currentSelectedMode = SYNTH_FREESTYLE;
+				else
+					currentSelectedMode = SYNTH_RECORDING;
+				
+				break;
+			}
+			
+			case SYNTH1_BUTTON:	
+			{
+				currentSelectedWaveForm++;
+				if(currentSelectedWaveForm == NUMBER_WAVETYPES-1)
+					currentSelectedWaveForm = 0;
+				
+				synthLayers[currentLayer].waveType = currentSelectedWaveForm;
+				break;
+			}
+			
+			case SYNTH2_BUTTON:
+			{
+				currentLayer++;
+				if(currentLayer == LAYER_COUNT)
+					currentLayer = 0;
+				
+				break;
+			}
+		}
+	}
+}
+
 /** Updates the notes that are currently pressed down
  * changes their parameters and such
  */
-
-
 void updateKeyboardNotes()
 {
 	/** Called at 1000 Hz */
@@ -288,7 +325,6 @@ void updateKeyboardNotes()
 		pOsc = pNote->pOsc;
 			if(pNote->noteState != NOTE_NONE)
 			{
-				pNote->durationCounter++;
 				/** Update the ADSR properties here */
 				if(pOsc->flags & OSC_FLAGS_PITCHBEND)
 				{
@@ -319,10 +355,6 @@ void updateKeyboardNotes()
 						pOsc->enabled = FALSE;
 						pNote->noteState = NOTE_NONE;
 						pKbNoteNext = pKbNote->pNextItem;
-						if(pNote->noteDuration)
-						{
-							synthLayers[currentLayer].sequenceTimes[pNote->noteDuration-1] = pNote->durationCounter;
-						}
 						removeNoteItem(pNote);
 						break;
 					}
@@ -352,7 +384,12 @@ void retriggerNote(NoteKey * pNote, uint8_t noteIndex, uint8_t source)
 	pNewOsc->phaseIncrement = noteTable[noteIndex];
 	pNewOsc->frequency =  noteTable[noteIndex];
 	pNewOsc->noteNumber = noteIndex;
-	pNewOsc->waveForm = currentSelectedWaveForm;
+	
+	if((source & NOTE_SRC_MASK) == NOTE_SRC_LAYER)
+		pNewOsc->waveForm = synthLayers[source & NOTE_LAYER_MASK].waveType;
+	else
+		pNewOsc->waveForm = currentSelectedWaveForm;
+	
 	pNewOsc->noteId = (uint16_t)((source<<8) | noteIndex);
 	pNote->noteId = (uint16_t)((source<<8) | noteIndex);
 }
@@ -372,11 +409,12 @@ NoteKey * newPlayNote(uint8_t noteIndex, uint8_t source)
 		pNewOsc->phaseIncrement = noteTable[noteIndex];
 		pNewOsc->frequency =  noteTable[noteIndex];
 		pNewOsc->noteNumber = noteIndex;
-		pNewOsc->waveForm = currentSelectedWaveForm;
-		pNewOsc->noteId = (uint16_t)((source<<8) | noteIndex);
-		pNewNote->noteId = (uint16_t)((source<<8) | noteIndex);
-		pNewNote->noteDuration = 0;
-		pNewNote->durationCounter = 0;
+		if((source & NOTE_SRC_MASK) == NOTE_SRC_LAYER)
+			pNewOsc->waveForm = synthLayers[source & NOTE_LAYER_MASK].waveType;
+		else
+			pNewOsc->waveForm = currentSelectedWaveForm;
+		pNewOsc->noteId = NOTE_ID(source, noteIndex);
+		pNewNote->noteId = NOTE_ID(source, noteIndex);
 		addNoteItem(pNewNote);
 		pitchBend(currentPitchBend);
 		return pNewNote;
@@ -415,107 +453,63 @@ void updateSequencerNotes()
 	uint16_t currentNote;
 	NoteKey * pNote = NULL;
 	/** Experimental code */
-	
-	if(currentNoteDown != 0xFF)
-	{
-		synthLayers[currentLayer].sequenceNotes[currentBeat] = currentNoteDown;
-		currentNoteDown = 0xFF;
 
-	}
-	else
-	{
-		currentNote = synthLayers[currentLayer].sequenceNotes[currentBeat];
-		/** This is where we play a note and unplay a note */
-		/** If the current layer does not have a osc assigned to it, then go ahead and assign one */
-		if(currentNote != 0xFFFF)
-		{
-			if(!synthLayers[currentLayer].pLayerNote)
-			{
-				pNote = newPlayNote(currentNote, 0xE000 | ((uint16_t)(currentLayer << 8)));
-				synthLayers[currentLayer].pLayerNote = pNote;
-				addNoteItem(pNote);
-			}
-			else
-			{
-				/** There is an oscillator currently assigned, reuse it */
-				pNote = synthLayers[currentLayer].pLayerNote; 
-				retriggerNote(pNote, currentNote, 0xE000 | ((uint16_t)currentLayer << 8));
-			}
-		}
-		else
-		{
-			/** In this case there is no note to play, in which case we should unplay the last note if it was playing */
-			if(synthLayers[currentLayer].pLayerNote)
-				synthLayers[currentLayer].pLayerNote->pOsc->enabled = FALSE;
-
-		}
-	}
-	
-	/** Increment beat counter */
 	currentBeat++;
 	if(currentBeat == SEQUENCER_STEPS)
 		currentBeat = 0;
+	
+	for(i = 0; i < LAYER_COUNT; i++)
+	{
+		if(synthLayers[i].layerFlags & LAYER_FLAGS_ENABLED)
+		{
+			currentNote = synthLayers[i].sequenceNotes[currentBeat];
+			/** This is where we play a note and unplay a note */
+			/** If the current layer does not have a osc assigned to it, then go ahead and assign one */
+			if(currentNote != 0xFFFF)
+			{
+				if(!synthLayers[i].pLayerNote)
+				{
+					pNote = newPlayNote(currentNote, NOTE_SRC_LAYER | i);
+					synthLayers[i].pLayerNote = pNote;
+				}
+				else
+				{
+					/** There is an oscillator currently assigned, reuse it */
+					pNote = synthLayers[i].pLayerNote; 
+					retriggerNote(pNote, currentNote, NOTE_SRC_LAYER | i);
+				}
+			}
+			else
+			{
+				/** In this case there is no note to play, in which case we should unplay the last note if it was playing */
+				if(synthLayers[i].pLayerNote)
+					synthLayers[i].pLayerNote->pOsc->enabled = FALSE;
+	
+			}
+		}
+	}
+	
+	if((currentNoteDown != 0xFF) && (synthLayers[currentLayer].layerFlags & LAYER_FLAGS_ENABLED))
+	{
+		synthLayers[currentLayer].sequenceNotes[currentBeat] = currentNoteDown;
+		if(synthLayers[currentLayer].pLayerNote)
+			synthLayers[currentLayer].pLayerNote->pOsc->enabled = FALSE;
+	}
+	
+	/** Increment beat counter */
+
 	return;
 }
 
 void addSequencerNote(uint8_t note)
 {
 	synthLayers[currentLayer].sequenceNotes[currentBeat] = note;
+	if(synthLayers[currentLayer].pLayerNote)
+		synthLayers[currentLayer].pLayerNote->pOsc->enabled = FALSE;
 	currentNoteDown = note;
 }
 
-//void updateSubSequence(bool internal)
-//{
-//	SequenceStep * pStep = &synthLayers[currentLayer].data[currentBeat];
-//	NoteKey * pNote;
-//	int i;
-//	
-//	/** Experimental code */
-//	for(i = 0; i < 25; i++)
-//	{
-//		if(keyStatus[i] == TRUE)
-//		{
-//			addSequencerNote(i + currentOctave*NOTES_PER_OCTAVE);
-//		}
-//	}
-//	
-//	/** This is where we play a note and unplay a note */
-//	/** If the current layer does not have a osc assigned to it, then go ahead and assign one */
-//	if(pStep->subData[pStep->stepIndex] != 0xFFFF)
-//	{
-//		if(!synthLayers[currentLayer].pNote)
-//		{
-//			pNote = newPlayNote(pStep->subData[pStep->stepIndex], 0xE000 | ((uint16_t)(currentLayer << 8)));
-//			synthLayers[currentLayer].pNote = pNote;
-//			addNoteItem(pNote);
-//		}
-//		else
-//		{
-//			/** There is an oscillator currently assigned, reuse it */
-//			pNote = synthLayers[currentLayer].pNote; 
-//			retriggerNote(pNote, pStep->subData[pStep->stepIndex], 0xE000 | ((uint16_t)currentLayer << 8));
-//		}
-//	}
-//	else
-//	{
-//		/** In this case there is no note to play, in which case we should unplay the last note if it was playing */
-//		if(synthLayers[currentLayer].pNote)
-//			synthLayers[currentLayer].pNote->pOsc->enabled = FALSE;
-//
-//	}
-//	
-//	if(internal)
-//	{
-//		pStep->stepIndex++;
-//		if(pStep->stepIndex == SEQUENCER_SUBSTEPS)
-//		{
-//			//if(synthLayers[currentLayer].pNote)
-//			//			synthLayers[currentLayer].pNote->pOsc->enabled = FALSE;
-//			pStep->stepIndex = 0;
-//		}
-//	}
-//}
-
+/** Updates the LED timer to turn the beat led and loop start LED on and off */
 void updateLED()
 {
 	if(!(currentBeat % 4))
@@ -534,81 +528,6 @@ void updateLED()
 	}
 }
 
-
-
-//void addSequencerNote(uint8_t note)
-//{
-//	uint8_t i;
-//	SequenceStep * pStep = &synthLayers[currentLayer].data[currentBeat];
-//	if(pStep->bStarted == FALSE)
-//	{
-//		/** Erase all data except the first one and start recording freshly */
-//		for(i = 1; i < SEQUENCER_SUBSTEPS; i++)
-//		{
-//			pStep->subData[i] = 0xFFFF;
-//			pStep->stepCount = 1;
-//			pStep->bStarted = TRUE;
-//		}
-//		/** Replace the first note */
-//		pStep->subData[pStep->stepIndex] = note;
-//	}
-//	else
-//	{
-//		/** just log the note */
-//		/*
-//		if(pStep->stepCount < 4)
-//		{
-//			pStep->subData[pStep->stepCount] = note;
-//			pStep->stepCount++;
-//		}
-//		*/
-//		pStep->subData[pStep->stepIndex] = note;
-//	}
-//	/** make sure we dont play any notes while recording the sequence */
-//	if(synthLayers[currentLayer].pNote)
-//	{
-//		//free(synthLayers[currentLayer].pNote);
-//		synthLayers[currentLayer].pNote->pOsc->enabled = FALSE;
-//	}
-//	
-//	
-//}
-
-void controlChange(uint8_t controlNumber, uint8_t controlValue)
-{
-	switch (controlNumber)
-	{
-		case PITCH_UP_BUTTON:
-		{
-			if(controlValue == CONTROL_ON)
-			{
-				if(currentOctave < 7)
-					currentOctave++;
-			}
-			break;
-		}
-		case PITCH_DOWN_BUTTON:
-		{
-			if(controlValue == CONTROL_ON)
-			{
-				if(currentOctave > 0)
-					currentOctave--;
-			}
-			break;
-		}
-		
-		case DRUMS_BUTTON:
-		{
-			if(controlValue == CONTROL_ON)
-			{
-				if(currentSelectedMode == SYNTH_RECORDING)
-					currentSelectedMode = SYNTH_FREESTYLE;
-				else
-					currentSelectedMode = SYNTH_RECORDING;
-			}
-		}
-	}
-}
 void pitchBend(uint16_t pitch)
 {
 	int i = 0;
@@ -647,6 +566,8 @@ void pitchBend(uint16_t pitch)
 	}
 
 }
+
+/** Just a function to test if my lists are working correctly */
 void listTest()
 {
 	NoteKey * n1;
@@ -708,32 +629,10 @@ void addNoteItem(NoteKey * pItem)
 		noteListTail = pNewItem;
 	}
 }
-//
-//void addSequencerItem(SequenceStep * pItem)
-//{
-//	sequencerListItem * pNewItem;
-//
-//	/** CASE 1: EMPTY LIST WITH NO FIRST ITEM. HEAD == TAIL */
-//	if(sequencerListHead == sequencerListTail)
-//	{
-//		pNewItem = (sequencerListItem*)malloc(sizeof(sequencerListItem));
-//		pNewItem->pStep= pItem;
-//		pNewItem->pNextItem = NULL;
-//		sequencerListTail = pNewItem;
-//		sequencerListHead->pNextItem = pNewItem;
-//		return;
-//	}
-//	else
-//	{
-//		/** CASE 2: NON EMPTY LIST, HEAD != TAIL */
-//		pNewItem = (sequencerListItem*)malloc(sizeof(sequencerListItem));
-//		pNewItem->pStep = pItem;
-//		pNewItem->pNextItem = NULL;
-//		sequencerListTail->pNextItem = pNewItem;
-//		sequencerListTail = pNewItem;
-//	}
-//}
-/** Searches for a note in the list and returns it if found, otherwise returns null */
+
+
+/** Finds a specified note from the notelist. the note should include the source
+ * returns null on failure */
 NoteKey * findNote(uint16_t note)
 {
 	noteListItem * pCurrentItem = noteListHead->pNextItem;
@@ -749,6 +648,8 @@ NoteKey * findNote(uint16_t note)
 	
 	return NULL;
 }
+
+/** Removes a note from the list */
 void removeNoteItem(NoteKey * pItem)
 {
 	noteListItem * pCurrentItem = noteListHead->pNextItem;
@@ -785,40 +686,8 @@ void removeNoteItem(NoteKey * pItem)
 		pCurrentItem = pCurrentItem->pNextItem;
 	}
 }
-//
-//void removeSequencerItem(SequenceStep * pStep )
-//{
-//	sequencerListItem * pCurrentItem = sequencerListHead->pNextItem;
-//	sequencerListItem * pLastItem = sequencerListHead;
-//	
-//	/** SANITY CHECK - HEAD == TAIL is EMPTY LIST */
-//	if(noteListHead == noteListTail)
-//		return;
-//	
-//	while(pCurrentItem)
-//	{
-//		if(pCurrentItem->pStep == pStep)
-//		{
-//			/** CASE 1: LAST ITEM IN LIST */
-//			if(pCurrentItem == sequencerListTail)
-//			{
-//				free(pCurrentItem);
-//				sequencerListTail = pLastItem;
-//				sequencerListTail->pNextItem = NULL;
-//				return;
-//			}
-//			else
-//			{
-//				/** CASE 2: NOT LAST ITEM */
-//				pLastItem->pNextItem = pCurrentItem->pNextItem;
-//				free(pCurrentItem);
-//				return;
-//			}
-//		}
-//		pLastItem = pCurrentItem;
-//		pCurrentItem = pCurrentItem->pNextItem;
-//	}
-//}
+
+/** Sets the time counters for the sequencer by taking a value for the beats per minute of the tempo */
 void setBPM(uint16_t bpm)
 {
 	beatsPerMinute = bpm;

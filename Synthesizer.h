@@ -35,8 +35,10 @@
 /** Note event types */
 #define NOTE_EVENT_ON  0x01
 #define NOTE_EVENT_OFF 0x02
-#define NOTE_SRC_KB		0xFA
-#define NOTE_SRC_LAYER		0xE0 
+#define NOTE_SRC_KB		0xF0
+#define NOTE_SRC_LAYER	0xE0
+#define NOTE_SRC_MASK	0xF0
+#define NOTE_LAYER_MASK	0x0F
 /* States for a note*/
 #define NOTE_ATTACK    0x01
 #define NOTE_DECAY     0x02
@@ -58,6 +60,7 @@
 #define LAYER_DRUM_2	0x05
 #define LAYER_EFFECTS	0x06
 #define LAYER_MACRO		0x07
+#define LAYER_COUNT		0x08
 
 
 /* LED PIN STATES */
@@ -70,13 +73,13 @@
 #define BEAT_LED_DELAY_MS	20
 
 /* Sequencer stuff */
-#define DEFAULT_BPM 60
 #define SEQUENCER_NOTE_RECORDING	0x1
 #define SEQUENCER_NOTE_OFF			0x2
 #define SEQUENCER_NOTE_PLAYING		0x4
 #define SEQUENCER_SUBSTEPS			4
 #define SEQUENCER_STEPS				16
 #define BEATS_PER_BAR				4
+#define DEFAULT_BPM 				90
 /* TYPES */
 
 typedef struct 
@@ -85,16 +88,14 @@ typedef struct
 	uint32_t phaseIncrement;
 	uint8_t noteState;
 	uint16_t noteId;
-	uint16_t noteDuration;
-	uint16_t durationCounter;
 } NoteKey;
 
 typedef struct
 {
 	uint16_t layerFlags;
 	uint16_t sequenceNotes[SEQUENCER_STEPS];
-	uint16_t sequenceTimes[SEQUENCER_STEPS];
 	NoteKey * pLayerNote;
+	uint8_t waveType;
 } LayerState;
 
 
@@ -103,12 +104,6 @@ struct noteListItem
 	NoteKey * pNote;
 	struct noteListItem * pNextItem;
 };
-
-//struct sequencerListItem 
-//{
-//	SequenceStep * pStep;
-//	struct sequencerListItem * pNextItem;
-//};
 
 typedef struct noteListItem noteListItem;
 

@@ -123,6 +123,6 @@ uint32_t getIncrement(uint32_t desiredFrequency)
 {
 	//return (uint32_t)desiredFrequency * 22000;
 	//return (uint32_t)((float)desiredFrequency * 2.67514677f);
-	return (desiredFrequency * 0x10000)/22500;
+	return (desiredFrequency * 0x10000)/22050;
 }
 

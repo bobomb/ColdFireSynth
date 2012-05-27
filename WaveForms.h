@@ -20,13 +20,14 @@ extern  uint32_t noteTable[];
 extern char * waveformNames[];
 
 #define GET_SINE(phase) (sineTable[phase>>8])
-//#define GET_SQUARE(phase) (phase & 0x8000) ? 0xFF : 0x00
-#define GET_SQUARE(phase) ((phase>>8)>0x40) ? 0xFF : 0x00
+#define GET_SQUARE(phase) (phase & 0x8000) ? 0xFF : 0x00
+//#define GET_SQUARE(phase) ((phase>>8)>0x40) ? 0xFF : 0x00
 //#define GET_SAWTOOTH(phase) getSaw(phase>>8)
-#define GET_SAWTOOTH(phase) ((phase>>8)>0x80) ? 0xFF : 0x00
-//#define GET_TRIANGLE(phase) triangleTable[phase>>8]
-#define GET_TRIANGLE(phase) ((phase>>8)>0xC0) ? 0xFF : 0x00
-#define GET_TRIANGLE4BIT(phase)triangle4BitTable[phase>>8]
+#define GET_SAWTOOTH(phase) (0xFF - (phase>>8))
+//#define GET_SAWTOOTH(phase) ((phase>>8)>0x80) ? 0xFF : 0x00
+#define GET_TRIANGLE(phase) triangleTable[phase>>8]
+//#define GET_TRIANGLE(phase) ((phase>>8)>0xC0) ? 0xFF : 0x00
+#define GET_TRIANGLE4BIT(phase) triangle4BitTable[phase>>8]
 #define GET_NOISE() getNoise()
 #define GET_WAVENAME(wave) waveformNames[wave]
 
@@ -46,5 +47,6 @@ uint16_t getNoise();
 uint16_t getSaw(uint32_t phase);
 uint32_t shift(uint32_t *lfsr, uint32_t polymask);
 void WaveformTablesInitialize();
+
 
 #endif /* WAVEFORMS_H_ */
