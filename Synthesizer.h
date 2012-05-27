@@ -70,12 +70,13 @@
 #define BEAT_LED_DELAY_MS	20
 
 /* Sequencer stuff */
-#define DEFAULT_BPM 15
+#define DEFAULT_BPM 60
 #define SEQUENCER_NOTE_RECORDING	0x1
 #define SEQUENCER_NOTE_OFF			0x2
 #define SEQUENCER_NOTE_PLAYING		0x4
 #define SEQUENCER_SUBSTEPS			4
-#define SEQUENCER_STEPS				8
+#define SEQUENCER_STEPS				16
+#define BEATS_PER_BAR				4
 /* TYPES */
 
 typedef struct 
@@ -84,30 +85,16 @@ typedef struct
 	uint32_t phaseIncrement;
 	uint8_t noteState;
 	uint16_t noteId;
+	uint16_t noteDuration;
+	uint16_t durationCounter;
 } NoteKey;
 
 typedef struct
 {
-	uint8_t noteNumber;
-	uint16_t noteOn;
-	uint32_t noteOff;
-	uint32_t beatDuration;
-	uint8_t flags;
-} SequencerNote;
-
-typedef struct
-{
-	uint8_t stepCount;
-	uint8_t stepIndex;
-	bool bStarted;
-	uint16_t subData[SEQUENCER_SUBSTEPS];
-} SequenceStep;
-
-typedef struct
-{
 	uint16_t layerFlags;
-	SequenceStep data[SEQUENCER_STEPS];
-	NoteKey * pNote;
+	uint16_t sequenceNotes[SEQUENCER_STEPS];
+	uint16_t sequenceTimes[SEQUENCER_STEPS];
+	NoteKey * pLayerNote;
 } LayerState;
 
 
@@ -117,14 +104,15 @@ struct noteListItem
 	struct noteListItem * pNextItem;
 };
 
-struct sequencerListItem 
-{
-	SequenceStep * pStep;
-	struct sequencerListItem * pNextItem;
-};
+//struct sequencerListItem 
+//{
+//	SequenceStep * pStep;
+//	struct sequencerListItem * pNextItem;
+//};
 
 typedef struct noteListItem noteListItem;
-typedef struct sequencerListItem sequencerListItem;
+
+//typedef struct sequencerListItem sequencerListItem;
 
 
 /* VARIABLES */
@@ -141,8 +129,6 @@ extern uint32_t beatTicksBar;
 
 /* FUNCTIONS */
 void initializeEverything();
-void notePress(uint16_t noteNumber, uint8_t noteVelocity);
-void noteRelease(uint16_t noteNumber, uint8_t noteVelocity);
 void noteEvent(uint16_t noteNumber, uint8_t eventType);
 void retriggerNote(NoteKey * pNote, uint8_t noteIndex, uint8_t source);
 uint8_t playNote(uint8_t noteIndex, NoteKey *pNote);
@@ -157,7 +143,7 @@ NoteKey * createNote(Oscillator * pOsc, uint32_t phaseIncrement, uint8_t noteSta
 NoteKey * findNote(uint16_t note);
 
 /** sequencer list stuff */
-void removeSequencerItem(SequenceStep * pStep);
+//void removeSequencerItem(SequenceStep * pStep);
 
 void listTest();
 void updateSynthesizer();

@@ -38,7 +38,6 @@ uint16_t LFOCounter = 0;
 extern uint16_t beatTicks;
 extern uint16_t beatTicksOff;
 extern uint8_t beatCounter;
-extern SequencerNote Sequencer[2][16];
 extern uint8_t currentSequence;
 
 bool ADSR = TRUE;
