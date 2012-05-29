@@ -72,9 +72,6 @@ void WaveformTablesInitialize()
 {
 	uint16_t i;
 	
-	//wave form names
-	
-	
 	for(i = 0; i<256; i++)
 	{
 		//squareTable[i] = (i>>7) ? 0xFFF : 0x000;

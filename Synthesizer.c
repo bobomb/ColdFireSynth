@@ -53,7 +53,8 @@ void initializeEverything()
 	{
 		for(j = 0; j < SEQUENCER_STEPS; j++)
 		{
-				synthLayers[i].sequenceNotes[j] = 0xFFFF;
+				synthLayers[i].sequenceNotes[j] = EMPTY_NOTE;
+				synthLayers[i].sequenceFlags[j] = 0x0000;
 		}
 		synthLayers[i].waveType = currentSelectedWaveForm;
 	}
@@ -335,27 +336,47 @@ void updateKeyboardNotes()
 				{
 					case NOTE_ATTACK:
 					{
-						pOsc->amplitude = 0xFF;
-						pNote->noteState = NOTE_SUSTAIN;
+						//pOsc->amplitude = 0xFF;
+						//pNote->noteState = NOTE_SUSTAIN;
+						pOsc->amplitude += pOsc->attack;
+						if(pOsc->amplitude > 0xFF)
+						{
+							pOsc->amplitude = 0xFF;
+							pNote->noteState = NOTE_DECAY;
+						}
+						
 						break;
 					}
 					
 					case NOTE_DECAY:
 					{
+						pOsc->amplitude -= pOsc->decay;
+						
+						if(pOsc->amplitude < 150)
+						{
+							pOsc->amplitude = 150;
+							pNote->noteState = NOTE_SUSTAIN;
+						}
 						break;
 					}
 					
 					case NOTE_SUSTAIN:
 					{
+						
 						break;
 					}
 					
 					case NOTE_RELEASE:
 					{
-						pOsc->enabled = FALSE;
-						pNote->noteState = NOTE_NONE;
-						pKbNoteNext = pKbNote->pNextItem;
-						removeNoteItem(pNote);
+						pOsc->amplitude -= pOsc->release;
+						
+						if(pOsc->amplitude <= 0)
+						{
+							pOsc->enabled = FALSE;
+							pNote->noteState = NOTE_NONE;
+							pKbNoteNext = pKbNote->pNextItem;
+							removeNoteItem(pNote);
+						}
 						break;
 					}
 				};
@@ -372,8 +393,7 @@ void updateKeyboardNotes()
 
 }
 
-
-/** retriggers a note that is already being played */
+/** retriggers a note that is already being played by reusing it's oscillator */
 void retriggerNote(NoteKey * pNote, uint8_t noteIndex, uint8_t source)
 {
 	Oscillator * pNewOsc = pNote->pOsc;
@@ -452,61 +472,98 @@ void updateSequencerNotes()
 	int i;
 	uint16_t currentNote;
 	NoteKey * pNote = NULL;
+	LayerState * pLayer = NULL;
 	/** Experimental code */
-
-	currentBeat++;
-	if(currentBeat == SEQUENCER_STEPS)
-		currentBeat = 0;
 	
 	for(i = 0; i < LAYER_COUNT; i++)
 	{
-		if(synthLayers[i].layerFlags & LAYER_FLAGS_ENABLED)
+		pLayer = &synthLayers[i];
+		currentNote = pLayer->sequenceNotes[currentBeat];
+		if(pLayer->layerFlags & LAYER_FLAGS_ENABLED)
 		{
-			currentNote = synthLayers[i].sequenceNotes[currentBeat];
-			/** This is where we play a note and unplay a note */
-			/** If the current layer does not have a osc assigned to it, then go ahead and assign one */
-			if(currentNote != 0xFFFF)
+			switch(currentLayer)
 			{
-				if(!synthLayers[i].pLayerNote)
+			case LAYER_MELODY_1:
+			case LAYER_MELODY_2:
+			{
+				/** Melody 1 and 2 follow the same logic */
+				/** Check to see if previous note is the same or not */
+				if(pLayer->sequenceNotes[currentBeat == 0 ? SEQUENCER_STEPS-1 : currentBeat-1] == currentNote)
 				{
-					pNote = newPlayNote(currentNote, NOTE_SRC_LAYER | i);
-					synthLayers[i].pLayerNote = pNote;
+					/** Previous note is the same as this one, therefore just retrigger it */
+					/** Previous note is empty and this is empty, do nothing */
+					if(currentNote != EMPTY_NOTE)
+					{
+						if(pLayer->pLayerNote)
+						{
+							/** Re-use the oscillator */
+							retriggerNote(pLayer->pLayerNote, currentNote, NOTE_SRC_LAYER | i );
+						}
+						else
+						{
+							/** No oscillator to use, use a new one */
+							pNote = newPlayNote(currentNote, NOTE_SRC_LAYER | i);
+							pLayer->pLayerNote = pNote;
+						}
+					}
 				}
 				else
 				{
-					/** There is an oscillator currently assigned, reuse it */
-					pNote = synthLayers[i].pLayerNote; 
-					retriggerNote(pNote, currentNote, NOTE_SRC_LAYER | i);
+					/** Previous note is different than the one here, set the previous note
+					 * to decay and assign a new osc to play this note
+					 */
+					if(pLayer->pLayerNote)
+						pLayer->pLayerNote->noteState = NOTE_RELEASE;
+					
+					if(currentNote != EMPTY_NOTE)
+					{
+						pNote = newPlayNote(currentNote, NOTE_SRC_LAYER | i);
+						pLayer->pLayerNote = pNote;
+					}
+					else /** Clear the note since this one is empty and the previous one has been released */
+						pLayer->pLayerNote = NULL;
 				}
+				
+				break;
 			}
-			else
+			
+			case LAYER_CHORD_1:
+			case LAYER_CHORD_2:
 			{
-				/** In this case there is no note to play, in which case we should unplay the last note if it was playing */
-				if(synthLayers[i].pLayerNote)
-					synthLayers[i].pLayerNote->pOsc->enabled = FALSE;
-	
+				/** Chord 1 and 2 follow the same logic */
+				break;
 			}
-		}
-	}
-	
-	if((currentNoteDown != 0xFF) && (synthLayers[currentLayer].layerFlags & LAYER_FLAGS_ENABLED))
-	{
-		synthLayers[currentLayer].sequenceNotes[currentBeat] = currentNoteDown;
-		if(synthLayers[currentLayer].pLayerNote)
-			synthLayers[currentLayer].pLayerNote->pOsc->enabled = FALSE;
-	}
+			
+			case LAYER_DRUM_1:
+			case LAYER_DRUM_2:
+			{
+				/** Drum 1 and 2 follow the same logic */
+				break;
+			}
+			
+			case LAYER_EFFECTS:
+			{
+				break;
+			}
+			
+			case LAYER_MACRO:
+			{
+				break;
+			}
+		} /** END SWITCH currentLayer */
+		} /** END IF LAYER ENABLED */
+	} /** END FOR LAYER LOOP */
 	
 	/** Increment beat counter */
-
+	currentBeat++;
+	if(currentBeat == SEQUENCER_STEPS)
+		currentBeat = 0;
 	return;
 }
 
 void addSequencerNote(uint8_t note)
 {
 	synthLayers[currentLayer].sequenceNotes[currentBeat] = note;
-	if(synthLayers[currentLayer].pLayerNote)
-		synthLayers[currentLayer].pLayerNote->pOsc->enabled = FALSE;
-	currentNoteDown = note;
 }
 
 /** Updates the LED timer to turn the beat led and loop start LED on and off */

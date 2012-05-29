@@ -20,39 +20,15 @@
 #include "Events.h"
 
 /* User includes (#include below this line is not maintained by Processor Expert) */
-#include "SynthStationUSB.h"
 #include "Oscillator.h"
 #include "Synthesizer.h"
 
 
-extern byte waveSelector;
-int i;
-
-extern uint8_t numOscInUse;
-uint16_t arpeggioRate = 5000;
-uint16_t arpeggioCounter = 0;
-uint8_t arpeggioNoteIndex = 0;
-uint8_t arpeggioNoteCounter = 0;
-uint16_t LFOCounter = 0;
-
-extern uint16_t beatTicks;
-extern uint16_t beatTicksOff;
-extern uint8_t beatCounter;
-extern uint8_t currentSequence;
-
-bool ADSR = TRUE;
-extern NoteKey keyStatus[];
-uint16_t outputValue;
-uint8_t waveCounter = 0;
-
-
-//frequency incrementer
-//these values were found through trial and error
-//17440, not 15625
-//(2^16)/17440) = 3.756
-/* incr = freq * (2^16 / 17440) 
- * So for 440Hz, 
- */
+int i = 0;
+int j = 0;
+int k = 0;
+uint16_t g_outputValue;
+uint16_t g_outputSum = 0;
 
 /* oscillator position */
 
@@ -70,37 +46,50 @@ uint8_t waveCounter = 0;
 **     Returns     : Nothing
 ** ===================================================================
 */
+
+/** This interrupt is called at the sampling rate of 22,050 hZ
+ * It's purpose is to send the last sample value to the DAC and
+ * then to calculate the next sample value and store it
+ */
  void TI1_OnInterrupt(void)
 {
-	uint16_t outputSum = 0;
-	SPI_Send((uint16_t)(outputValue) | 0x7000);
-	outputValue = 0;
+	/** As per the MCP4921 DAC instructions, the first 4 bits are control bits
+	 * 0x7000 = 0 1 1 1 ...sample[12 bits] 
+	 * bit 15 = unused
+	 * bit 14 = buffered input on
+	 * bit 13 = gain mode 1x on
+	 * bit 12 = active low shutdown, on
+	 * bits 11-0 = sample value
+	 **/
+	SPI_Send((uint16_t)(g_outputValue) | 0x7000);
+	g_outputValue = 0;
+	g_outputSum = 0;
 
+	/** Loop through the oscillator list, checking to see if they are enabled */
 	for(i = 0; i < MAX_OSCILLATORS; i++)
 	{
 		if(Oscillators[i].enabled)
 		{
+			/** If enabled, increment the phase counter */
 			Oscillators[i].phaseCounter += Oscillators[i].phaseIncrement;
-			outputSum += ((getWave(Oscillators[i].waveForm, Oscillators[i].phaseCounter))*(uint32_t)(Oscillators[i].amplitude))/0x000000FF;
-			outputValue++;
-			/* Use outputValue as a counter for the # of oscs we sampled */
-		}
-		
+			/** Add the sample value for the wave to our running sample sum by first multiplying the sample
+			 * by it's amplitude and then dividing by 0xFF. Amplitude ranges from 0-255. Max sample value ranges
+			 * from 0 to 255. The final value that gets added to the sum is from 0-255 per oscillator
+			 * The DAC accepts a 12 bit value, and it just so happens that 256 * 8 = 4096 = 12 bits
+			 */
+			g_outputSum += ((getWave(Oscillators[i].waveForm, Oscillators[i].phaseCounter))*(uint32_t)(Oscillators[i].amplitude))/0x000000FF;
+			g_outputValue++;
+			/* Use outputValue as a counter for the # of oscs we sampled...cheap trick */
+		}	
 	}
 	
-	if(outputValue)
-	{
-		/* experimental */ 
-		//outputSum /= outputValue;
-		//outputSum <<=2;
-		outputValue = outputSum;
-	}
+	if(g_outputValue)
+		g_outputValue = g_outputSum;
 	
 }
 
 __inline uint16_t getWave(byte waveType, uint32_t pos)
 {
-	waveType = waveType % NUMBER_WAVETYPES;
 	switch(waveType)
 	{
 		case WAVE_SINE:

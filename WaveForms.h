@@ -9,7 +9,7 @@
 #define WAVEFORMS_H_
 
 #include "PE_Types.h"
-
+#define NUM_ELEMENTS 1816
 extern const uint8_t sineTable[];
 
 extern uint8_t squareTable[];
@@ -17,6 +17,7 @@ extern uint8_t sawTable[];
 extern uint8_t triangleTable[];
 extern uint8_t triangle4BitTable[];
 extern  uint32_t noteTable[];
+extern const uint8_t sumdatam[];
 extern char * waveformNames[];
 
 #define GET_SINE(phase) (sineTable[phase>>8])

@@ -15,7 +15,7 @@ uint32_t oscUsageField = 0x0;
 uint8_t numOscInUse = MAX_OSCILLATORS;
 Oscillator * oscillatorStack[MAX_OSCILLATORS];
 uint8_t topOfStack=0xFF; //0xFF = uninitialized
-Envelope currentEnvelope = {1, 20, 10, 1}; 
+Envelope currentEnvelope = {255, 3, 10, 1}; 
 
 void initializeOscillators()
 {

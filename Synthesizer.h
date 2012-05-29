@@ -61,8 +61,7 @@
 #define LAYER_EFFECTS	0x06
 #define LAYER_MACRO		0x07
 #define LAYER_COUNT		0x08
-
-
+#define EMPTY_NOTE		0xFFFF
 /* LED PIN STATES */
 #define BEAT_LED	PTCD_PTCD4
 #define BEAT_LED_DD	PTCDD_PTCDD4
@@ -92,8 +91,15 @@ typedef struct
 
 typedef struct
 {
+	uint16_t noteNumber;
+	uint8_t flags;
+} SequencerNote;
+typedef struct
+{
 	uint16_t layerFlags;
 	uint16_t sequenceNotes[SEQUENCER_STEPS];
+	uint8_t sequenceFlags[SEQUENCER_STEPS];
+	//SequencerNote sequenceNotes[SEQUENCER_STEPS]
 	NoteKey * pLayerNote;
 	uint8_t waveType;
 } LayerState;
