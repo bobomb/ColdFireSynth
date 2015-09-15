@@ -9,7 +9,6 @@ The idea:
 * communicate status via character LCD
 * take input by using USB host capability to connect to a USB midi mini keyboard
 
-## Ultimately, I gave up on it because I couldn't figure out why I was missing keyboard notes. Horribly inefficient.
 
 ![The hardware](http://www.empiricalnerd.com/wp-content/uploads/2012/09/temp_2.jpg)
 ![Better hardwware](http://www.empiricalnerd.com/wp-content/uploads/2012/09/IMG_20120923_223652.jpg)
